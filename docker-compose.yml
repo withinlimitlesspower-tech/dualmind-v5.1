@@ -3,13 +3,63 @@ version: '3.8'
 services:
   app:
     build: .
+    container_name: ai-code-manager
     ports:
       - "8000:8000"
     environment:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - DEBUG=${DEBUG:-False}
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/studio
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
     volumes:
-      - ./studio.db:/app/studio.db
       - ./static:/app/static
       - ./templates:/app/templates
+      - ./logs:/app/logs
+    depends_on:
+      - db
     restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  db:
+    image: postgres:15-alpine
+    container_name: ai-code-manager-db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=studio
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: ai-code-manager-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./static:/static:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+
+networks:
+  app-network:
+    driver: bridge
